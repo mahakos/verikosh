@@ -38,6 +38,6 @@ Expected: `TESTS=3 PASS=3 FAIL=0`.
 ## Need verification help?
 
 Mahakosh Silicon builds UVM and cocotb testbenches, closes coverage and triages bugs for small chip and FPGA teams.
-Free 1-week verification health check: **mahakosh.silicon@gmail.com** · https://mahakos.github.io
+Free 1-week verification health check: **mahakosh.silicon@gmail.com** · https://mahakos.github.io/mahakosh.github.io/
 
 License: Apache-2.0
