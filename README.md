@@ -1,4 +1,4 @@
-# VeriKosh — open-source verification IP by Mahakosh Silicon
+# Neesil VIP: open-source verification IP
 
 Reusable, coverage-driven verification components for common SoC interfaces, built on open-source tools ([cocotb](https://www.cocotb.org), Icarus Verilog / Verilator).
 
@@ -37,7 +37,7 @@ Expected: `TESTS=3 PASS=3 FAIL=0`.
 
 ## Need verification help?
 
-Mahakosh Silicon builds UVM and cocotb testbenches, closes coverage and triages bugs for small chip and FPGA teams.
-Free 1-week verification health check: **mahakosh.silicon@gmail.com** · https://mahakos.github.io/mahakosh.github.io/
+Neesil builds UVM and cocotb testbenches, closes coverage and triages bugs for small chip and FPGA teams.
+Free 1-week verification health check: **hello.neesil@gmail.com** · https://mahakos.github.io/mahakosh.github.io/
 
 License: Apache-2.0
