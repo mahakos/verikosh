@@ -1,0 +1,8 @@
+# id | bug injected | text in RTL | replacement      (\n = newline)
+cpha_ignored | CPHA ignored when choosing the sampling edge | wire       sample   = leading ^ cpha;   | wire       sample   = leading;
+rx_lsb       | received bits always shifted MSB first       | ish <= lsb_first ? {miso, ish[7:1]} : {ish[6:0], miso}; | ish <= {ish[6:0], miso};
+short_frame  | frame ends after 15 SCLK edges               | if (edge_n == 4'd15) st <= HOLD;       | if (edge_n == 4'd14) st <= HOLD;
+cpol_idle    | SCLK idles low regardless of CPOL            | sclk <= cpol;                          | sclk <= 1'b0;
+no_hold      | CS_N released right after the last edge      | HOLD: if (cnt != 0) cnt <= cnt - 1'b1; | HOLD: if (1'b0) cnt <= cnt - 1'b1;
+first_bit    | CPHA=0 first bit always MSB                  | mosi <= lsb_first ? tx_data[0] : tx_data[7]; | mosi <= tx_data[7];
+fast_sclk    | divider ignored inside the frame             | cnt    <= div - 1'b1;\n          sclk   <= !sclk; | cnt    <= 8'd0;\n          sclk   <= !sclk;

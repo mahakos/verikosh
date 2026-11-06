@@ -3,3 +3,4 @@ results.xml
 __pycache__/
 *.vcd
 *.fst
+build/

@@ -1,8 +1,22 @@
 name: VIP regression
 on: [push, pull_request]
+
 jobs:
-  apb:
-    runs-on: ubuntu-latest
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y verilator
+      - name: verilator -Wall on every RTL block
+        run: for f in */rtl/*.v; do echo "== $f"; verilator --lint-only -Wall "$f"; done
+
+  sim:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        block: [apb, axi4lite, uart, spi]
+        seed: [1, 2, random]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -10,5 +24,35 @@ jobs:
           python-version: "3.12"
       - run: sudo apt-get update && sudo apt-get install -y iverilog
       - run: pip install "cocotb>=2.0,<3"
-      - run: make -C apb/tb
-      - run: "! grep -q '<failure' apb/tb/results.xml"
+      - name: cocotb regression
+        run: |
+          if [ "${{ matrix.seed }}" != random ]; then export SEED=${{ matrix.seed }}; fi
+          make -C ${{ matrix.block }}/tb
+      - run: "! grep -q '<failure' ${{ matrix.block }}/tb/results.xml"
+
+  formal:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        block: [fifo, axi4lite]
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y yosys z3
+      - name: BMC, k-induction and cover
+        run: make -C ${{ matrix.block }}/formal
+
+  mutation:
+    runs-on: ubuntu-24.04
+    needs: [sim, formal]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y iverilog yosys z3
+      - run: pip install "cocotb>=2.0,<3"
+      - name: every injected bug must be caught
+        run: python3 tools/mutate.py --report mutation.md
+      - if: always()
+        run: cat mutation.md >> "$GITHUB_STEP_SUMMARY"

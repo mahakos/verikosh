@@ -1,0 +1,6 @@
+# id | bug injected | text in RTL | replacement      (\n = newline)
+full_flag   | full flag polarity of the wrap bit inverted   | (wptr[AW] != rptr[AW])                  | (wptr[AW] == rptr[AW])
+overflow    | push accepted when full                       | wire do_push = push && !full;           | wire do_push = push;
+underflow   | pop accepted when empty                       | wire do_pop  = pop  && !empty;          | wire do_pop  = pop;
+wrong_head  | read data taken from the write pointer        | assign rdata = mem[rptr[AW-1:0]];       | assign rdata = mem[wptr[AW-1:0]];
+mem_clobber | memory written even when the push is refused  | if (do_push) mem[wptr[AW-1:0]] <= wdata; | if (push) mem[wptr[AW-1:0]] <= wdata;
