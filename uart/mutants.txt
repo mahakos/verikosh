@@ -1,0 +1,9 @@
+# id | bug injected | text in RTL | replacement      (\n = newline)
+tx_parity   | TX ignores odd-parity setting                    | tpar <= ^tx_data ^ par_odd;            | tpar <= ^tx_data;
+rx_late     | RX samples at the end of each bit, not the middle | rcnt <= (div >> 1) - 1'b1;            | rcnt <= div - 1'b1;
+no_glitch   | start-bit glitch rejection removed              | START: if (rx_s) rst_q <= IDLE;        | START: if (1'b0) rst_q <= IDLE;
+no_ferr     | framing errors never reported                    | rx_ferr  <= !rx_s;                     | rx_ferr  <= 1'b0;
+short_stop  | TX skips the stop bit after a parity bit         | PAR:   begin tst <= STOP; txd <= 1'b1; end | PAR:   begin tst <= IDLE; txd <= 1'b1; end
+rx_parity   | RX parity check ignores odd mode                 | (rpar != (^rsh ^ par_odd))             | (rpar != ^rsh)
+bit_order   | RX shifts MSB first                              | rsh <= {rx_s, rsh[7:1]};               | rsh <= {rsh[6:0], rx_s};
+no_break    | receiver does not wait out a BREAK               | rst_q    <= rx_s ? IDLE : BREAK;       | rst_q    <= IDLE;

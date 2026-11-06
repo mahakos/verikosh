@@ -1,0 +1,9 @@
+# id | bug injected | text in RTL | replacement      (\n = newline)
+ro_okay     | write to read-only register returns OKAY            | bresp   <= w_ok ? OKAY : SLVERR;  | bresp   <= OKAY;
+b_overrun   | new write response overwrites an unaccepted one     | commit = aw_full && w_full && (!bvalid || bready); | commit = aw_full && w_full;
+strb_lane   | WSTRB[3] enables byte lane 2                        | if (strb_q[3]) regs[wi][31:24]   | if (strb_q[2]) regs[wi][31:24]
+r_drop      | RVALID dropped without RREADY                       | end else if (rvalid && rready) begin | end else if (rvalid) begin
+ar_overrun  | ARREADY high while a read response is pending       | assign arready = !rvalid;          | assign arready = 1'b1;
+ver_alias   | out-of-range reads alias the VERSION register       | else if (ridx == RO_IDX)           | else if (ridx >= RO_IDX)
+w_overrun   | WREADY ignores the full W buffer                    | assign wready  = !w_full;          | assign wready  = 1'b1;
+reset_val   | registers reset to all-ones                         | regs[i] <= 32'h0;                  | regs[i] <= 32'hFFFF_FFFF;

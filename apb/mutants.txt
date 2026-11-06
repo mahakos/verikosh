@@ -1,0 +1,9 @@
+# id | bug injected | text in RTL | replacement      (\n = newline)
+strb_lane   | PSTRB[1] enables byte lane 2 instead of 1    | if (pstrb[1]) regs[ri][15:8]           | if (pstrb[2]) regs[ri][15:8]
+range_obo   | off-by-one in the address range check        | ({26'd0, idx} < NREGS)                  | ({26'd0, idx} <= NREGS)
+err_write   | erroring writes still modify a register      | access && pready && pwrite && valid     | access && pready && pwrite
+reset_val   | registers reset to 1 instead of 0            | regs[i] <= 32'h0;                       | regs[i] <= 32'h1;
+unaligned   | unaligned addresses accepted                 | (paddr[1:0] == 2'b00) &&                |
+err_rd_only | PSLVERR only reported on reads               | pslverr = !valid;                       | pslverr = !valid && !pwrite;
+wait_hang   | wait-state counter never counts down         | wcnt <= wcnt - 1'b1;                    | wcnt <= wcnt;
+rd_in_wait  | PRDATA driven only on zero-wait reads        | if (!pwrite && valid) prdata = regs[ri]; | if (!pwrite && valid && wcnt == 2'd0 && !lfsr[0]) prdata = regs[ri];
