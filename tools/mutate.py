@@ -23,13 +23,13 @@ ROOT = Path(__file__).resolve().parent.parent
 BLOCKS = {
     "apb":      ("apb/rtl/apb_regfile.v",       [("sim", "apb/tb", [])]),
     "axi4lite": ("axi4lite/rtl/axil_regfile.v", [("sim", "axi4lite/tb", []),
-                                                 ("formal", "axi4lite/formal", ["bmc", "prove"])]),
-    "fifo":     ("fifo/rtl/sync_fifo.v",        [("formal", "fifo/formal", ["bmc", "prove"])]),
+                                                 ("formal", "axi4lite/formal", ["bmc", "prove", "cover"])]),
+    "fifo":     ("fifo/rtl/sync_fifo.v",        [("formal", "fifo/formal", ["bmc", "prove", "cover"])]),
     "uart":     ("uart/rtl/uart.v",             [("sim", "uart/tb", [])]),
     "spi":      ("spi/rtl/spi_master.v",        [("sim", "spi/tb", [])]),
     "i2c":      ("i2c/rtl/i2c_master.v",        [("sim", "i2c/tb", [])]),
     "async_fifo": ("async_fifo/rtl/async_fifo.v", [("sim", "async_fifo/tb", []),
-                                                   ("formal", "async_fifo/formal", ["bmc", "prove"])]),
+                                                   ("formal", "async_fifo/formal", ["bmc", "prove", "cover"])]),
 }
 TIMEOUT = 300
 
@@ -117,7 +117,8 @@ def main():
                  f"**Mutation score: {killed}/{total} ({score:.0f}%)**", "",
                  "| Block | Mutant | Bug injected | Result |", "|---|---|---|---|"]
         lines += [f"| {b} | `{m}` | {d} | {v} |" for b, m, d, v in rows]
-        lines += ["", "Simulation runs use SEED=1. Formal runs are BMC plus k-induction.",
+        lines += ["", "Simulation runs use SEED=1. Formal runs are BMC, k-induction and the cover traces",
+                  "(a design that never reaches full or never completes a transfer fails its covers).",
                   "Reproduce with `python3 tools/mutate.py --report docs/MUTATION_REPORT.md`."]
         args.report.write_text("\n".join(lines) + "\n")
     sys.exit(0 if killed == total else 1)

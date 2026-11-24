@@ -1,6 +1,10 @@
 // APB3 register file: 8 x 32-bit registers with PSTRB, PSLVERR on an out-of-range or unaligned address.
 // WAIT_MAX (0, 1 or 3) inserts 0..WAIT_MAX pseudo-random wait states per transfer (PREADY low),
 // so the testbench exercises the full APB handshake. WAIT_MAX = 0 gives a zero-wait slave.
+// The wait-state count comes from an 8-bit LFSR (seed 0xA5, taps 8,6,5,4): waits = lfsr[1:0] & WAIT_MAX
+// at each setup phase, so every run is reproducible.
+// Outside an access phase PRDATA = 0, PSLVERR = 0 and PREADY = 1, and PRDATA is 0 for writes and
+// error responses, so several slaves can share an OR-combined read bus.
 module apb_regfile #(
   parameter integer NREGS    = 8,
   parameter integer WAIT_MAX = 3

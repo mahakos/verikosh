@@ -97,8 +97,9 @@ class ApbProtocolChecker:
     setup phase lasts one cycle, PENABLE only with PSEL, address/control/write data stable
     from setup until PREADY, and PSEL/PENABLE behave correctly after the transfer."""
 
-    def __init__(self, dut, clk, log):
+    def __init__(self, dut, clk, log, slave_rules=None):
         self.dut, self.clk, self.log = dut, clk, log
+        self.rules = slave_rules
         self.violations = 0
 
     def _fail(self, msg):
@@ -111,6 +112,9 @@ class ApbProtocolChecker:
         while True:
             await RisingEdge(self.clk)
             await ReadOnly()
+            if self.rules:
+                for msg in self.rules.check(d):
+                    self._fail(msg)
             if not d.presetn.value:
                 prev = None
                 continue
@@ -132,6 +136,53 @@ class ApbProtocolChecker:
                 if prev["psel"] and prev["penable"] and prev["pready"] and cur["penable"]:
                     self._fail("PENABLE still high in the cycle after the transfer completed")
             prev = cur
+
+
+class SlaveRules:
+    """Rules of this slave beyond the APB spec, from the RTL header:
+      * outside an access phase PRDATA = 0, PSLVERR = 0 and PREADY = 1 (slaves can share an OR-combined
+        read bus); PRDATA is also 0 during writes and error responses
+      * the number of wait states of each transfer follows the documented LFSR (seed 0xA5, taps 8,6,5,4;
+        waits = lfsr[1:0] & WAIT_MAX at the setup phase), so every run is reproducible
+    Called once per clock, in the ReadOnly phase after the edge."""
+
+    def __init__(self, wait_max):
+        self.wmax = wait_max
+        self.lfsr = 0xA5
+        self.rst_was_high = False
+        self.expected_waits = []
+        self.pending = []
+
+    def check(self, d):
+        errs, self.pending = self.pending, []
+        # the LFSR moved at the edge just passed if reset was released before it
+        if self.rst_was_high:
+            l = self.lfsr
+            self.lfsr = ((l << 1) & 0xFF) | ((l >> 7 ^ l >> 5 ^ l >> 4 ^ l >> 3) & 1)
+        else:
+            self.lfsr = 0xA5
+        self.rst_was_high = bool(d.presetn.value)
+        if not d.presetn.value:
+            return errs
+        psel, pen = int(d.psel.value), int(d.penable.value)
+        prdata, pslverr, pready = d.prdata.value, d.pslverr.value, d.pready.value
+        if not (prdata.is_resolvable and pslverr.is_resolvable and pready.is_resolvable):
+            return [f"X/Z on an output: PRDATA={prdata} PSLVERR={pslverr} PREADY={pready}"]
+        if not (psel and pen):
+            if int(prdata) or int(pslverr) or not int(pready):
+                errs.append(f"outside an access: PRDATA=0x{int(prdata):x} PSLVERR={int(pslverr)} "
+                            f"PREADY={int(pready)}, expected 0, 0, 1")
+        elif (int(d.pwrite.value) or int(pslverr)) and int(prdata):
+            errs.append(f"PRDATA=0x{int(prdata):x} during a write or an error response, expected 0")
+        if psel and not pen:                        # setup phase: the next edge loads the wait count
+            self.expected_waits.append(self.lfsr & 3 & self.wmax)
+        return errs
+
+    def __call__(self, t):
+        """Monitor callback: compare the transfer's wait states with the LFSR prediction."""
+        exp = self.expected_waits.pop(0) if self.expected_waits else None
+        if exp != t.waits:
+            self.pending.append(f"addr=0x{t.addr:02x}: {t.waits} wait states, expected {exp} from the LFSR")
 
 
 class RegModel:

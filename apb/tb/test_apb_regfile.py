@@ -4,7 +4,7 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
 from apb_vip import (ApbMaster, ApbMonitor, ApbProtocolChecker, ApbTxn, RegModel, Scoreboard,
-                     Coverage, random_txn)
+                     Coverage, SlaveRules, random_txn)
 
 NREGS = 8
 
@@ -15,8 +15,9 @@ async def setup(dut):
     master = ApbMaster(dut, clk)
     model, cov = RegModel(NREGS), Coverage(NREGS)
     sb = Scoreboard(model, dut._log)
-    proto = ApbProtocolChecker(dut, clk, dut._log)
-    cocotb.start_soon(ApbMonitor(dut, clk, [sb, cov]).run())
+    rules = SlaveRules(int(dut.WAIT_MAX.value))
+    proto = ApbProtocolChecker(dut, clk, dut._log, rules)
+    cocotb.start_soon(ApbMonitor(dut, clk, [sb, cov, rules]).run())
     cocotb.start_soon(proto.run())
     dut.presetn.value = 0
     for _ in range(3):

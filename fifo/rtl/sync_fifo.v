@@ -55,6 +55,12 @@ module sync_fifo #(
     assert (!(full && empty));
   end
 
+  // ---------------------------------------------------------------- reset
+  always @(posedge clk) if (f_past_valid && !$past(rst_n)) begin
+    assert (empty && !full && count == 0);
+    assert (wptr == 0 && rptr == 0);
+  end
+
   // ---------------------------------------------------------------- pointer behaviour
   always @(posedge clk) if (f_past_valid && $past(rst_n)) begin
     if ($past(do_push) && !$past(do_pop)) assert (count == $past(count) + 1);
