@@ -38,6 +38,12 @@ Things this found while building the repo:
 * The dual-clock FIFO's classic CDC mistakes (pointer crossing in binary, full test with only the MSB inverted,
   a synchroniser fed from combinational logic) are each caught twice: by jittered-clock simulation and by a formal
   proof that tries every ordering of the two clocks' edges.
+* A second round with hundreds of automatically generated one-line bugs per block (flipped comparisons, changed
+  constants, dropped updates, stuck conditions) found holes the hand-written list missed: output values during and
+  after reset were not checked, SPI and UART timing was only checked against minimums, APB outputs outside an access
+  were unchecked, and the AXI4-Lite tests never held READY low long enough to show a response waiting for it. The
+  checkers are now cycle-exact and those bugs are caught; the few that survive are equivalent (no observable
+  difference on the pins).
 * Two mutants turned out to be *equivalent* (no observable difference for any legal stimulus) and were replaced, which is
   itself a useful review of the design.
 

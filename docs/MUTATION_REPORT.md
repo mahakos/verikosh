@@ -15,12 +15,12 @@ the regression must fail for it to count as caught.
 | apb | `err_rd_only` | PSLVERR only reported on reads | caught by sim |
 | apb | `wait_hang` | wait-state counter never counts down | caught by sim |
 | apb | `rd_in_wait` | PRDATA driven only on zero-wait reads | caught by sim |
-| axi4lite | `ro_okay` | write to read-only register returns OKAY | caught by sim |
+| axi4lite | `ro_okay` | write to read-only register returns OKAY | caught by sim + formal |
 | axi4lite | `b_overrun` | new write response overwrites an unaccepted one | caught by sim + formal |
 | axi4lite | `strb_lane` | WSTRB[3] enables byte lane 2 | caught by sim |
 | axi4lite | `r_drop` | RVALID dropped without RREADY | caught by sim + formal |
 | axi4lite | `ar_overrun` | ARREADY high while a read response is pending | caught by formal |
-| axi4lite | `ver_alias` | out-of-range reads alias the VERSION register | caught by sim |
+| axi4lite | `ver_alias` | out-of-range reads alias the VERSION register | caught by sim + formal |
 | axi4lite | `w_overrun` | WREADY ignores the full W buffer | caught by formal |
 | axi4lite | `reset_val` | registers reset to all-ones | caught by sim |
 | fifo | `full_flag` | full flag polarity of the wrap bit inverted | caught by formal |
@@ -62,5 +62,6 @@ the regression must fail for it to count as caught.
 | async_fifo | `rd_addr` | memory read with the Gray pointer instead of the binary one | caught by sim + formal |
 | async_fifo | `empty_reset` | rempty low out of reset | caught by sim + formal |
 
-Simulation runs use SEED=1. Formal runs are BMC plus k-induction.
+Simulation runs use SEED=1. Formal runs are BMC, k-induction and the cover traces
+(a design that never reaches full or never completes a transfer fails its covers).
 Reproduce with `python3 tools/mutate.py --report docs/MUTATION_REPORT.md`.
