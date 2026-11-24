@@ -27,6 +27,7 @@ BLOCKS = {
     "fifo":     ("fifo/rtl/sync_fifo.v",        [("formal", "fifo/formal", ["bmc", "prove"])]),
     "uart":     ("uart/rtl/uart.v",             [("sim", "uart/tb", [])]),
     "spi":      ("spi/rtl/spi_master.v",        [("sim", "spi/tb", [])]),
+    "i2c":      ("i2c/rtl/i2c_master.v",        [("sim", "i2c/tb", [])]),
 }
 TIMEOUT = 300
 

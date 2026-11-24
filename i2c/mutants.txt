@@ -1,0 +1,10 @@
+# id | bug injected | text in RTL | replacement      (\n = newline)
+no_stretch   | clock stretching ignored: SCL high phase counted while SCL is still low | 2'd2: if (scl_s) begin | 2'd2: if (1'b1) begin
+no_arb       | arbitration loss never detected                       | tx[8] && !sda_s                         | tx[8] && 1'b0
+arb_silent   | arbitration loss handled but not reported              | arb_lost <= 1'b1;                       | arb_lost <= 1'b0;
+nack_inv     | ACK/NACK of a written byte reported inverted           | if (op == C_WRITE) nack    <= rx[0];    | if (op == C_WRITE) nack    <= !rx[0];
+rd_ack_inv   | READ sends NACK when asked for ACK and vice versa       | {8'hFF, !cmd_ack}                       | {8'hFF, cmd_ack}
+rx_order     | received bits shifted in LSB first                    | rx <= {rx[7:0], sda_s};                 | rx <= {sda_s, rx[8:1]};
+short_hd_sta | START hold time one quarter instead of two             | cnt <= (op == C_START) ? two_q : one_q; | cnt <= one_q;
+short_su_sto | STOP / repeated START setup time one quarter          | is_bit ? one_q : two_q                  | one_q
+stop_swap    | SDA level before a STOP and a repeated START swapped    | sda_oe <= is_bit ? !tx[8] : (op == C_STOP); | sda_oe <= is_bit ? !tx[8] : (op == C_START);
