@@ -1,0 +1,10 @@
+# id | bug injected | text in RTL | replacement      (\n = newline)
+binary_cdc   | write pointer crosses the clock boundary in binary, not Gray | wire [AW:0] wgray_nxt = (wbin_nxt >> 1) ^ wbin_nxt; | wire [AW:0] wgray_nxt = wbin_nxt;
+full_one_msb | full compares Gray pointers with only the MSB inverted (binary rule) | {~wq_rgray[AW:AW-1], wq_rgray[AW-2:0]} | {~wq_rgray[AW], wq_rgray[AW-1:0]}
+full_late    | full flag computed from the current pointer, one push too late | wfull <= wfull_nxt; | wfull <= (wgray == {~wq_rgray[AW:AW-1], wq_rgray[AW-2:0]});
+empty_late   | empty flag computed from the current pointer, one pop too late  | rempty <= rempty_nxt; | rempty <= (rgray == rq_wgray);
+push_full    | push accepted while full                                       | winc && !wfull | winc
+pop_empty    | pop accepted while empty                                       | rinc && !rempty | rinc
+comb_cdc     | synchroniser fed from combinational next-pointer logic          | wsync[0] <= rgray; | wsync[0] <= rgray_nxt;
+rd_addr      | memory read with the Gray pointer instead of the binary one     | assign rdata = mem[rbin[AW-1:0]]; | assign rdata = mem[rgray[AW-1:0]];
+empty_reset  | rempty low out of reset                                         | rempty <= 1'b1; | rempty <= 1'b0;

@@ -28,6 +28,8 @@ BLOCKS = {
     "uart":     ("uart/rtl/uart.v",             [("sim", "uart/tb", [])]),
     "spi":      ("spi/rtl/spi_master.v",        [("sim", "spi/tb", [])]),
     "i2c":      ("i2c/rtl/i2c_master.v",        [("sim", "i2c/tb", [])]),
+    "async_fifo": ("async_fifo/rtl/async_fifo.v", [("sim", "async_fifo/tb", []),
+                                                   ("formal", "async_fifo/formal", ["bmc", "prove"])]),
 }
 TIMEOUT = 300
 
