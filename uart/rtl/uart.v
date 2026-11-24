@@ -39,8 +39,7 @@ module uart #(
     if (!rst_n) begin
       tst <= IDLE;
       txd <= 1'b1;
-    end else if (tst == IDLE) begin
-      txd <= 1'b1;
+    end else if (tst == IDLE) begin           // txd is already high: reset value or stop bit
       if (tx_valid) begin
         tsh  <= tx_data;
         tpar <= ^tx_data ^ par_odd;

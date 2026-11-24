@@ -3,10 +3,20 @@ import random
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, ClockCycles, Timer, ReadOnly
-from uart_vip import UartConfig, UartSource, UartSink, RxMonitor, Coverage, PARITY
+from uart_vip import UartConfig, UartSource, UartSink, RxMonitor, TxTiming, Coverage, PARITY
 
 CLK_PS = 10_000
 TIMEOUT = 54 * 12 * 2     # cycles: two frames at the slowest divisor
+
+
+RESET_OUTPUTS = dict(txd=1, tx_ready=1, rx_valid=0, rx_data=0, rx_perr=0, rx_ferr=0)
+
+
+async def check_reset_outputs(dut, when):
+    await ReadOnly()
+    for name, exp in RESET_OUTPUTS.items():
+        v = getattr(dut, name).value
+        assert v.is_resolvable and int(v) == exp, f"{name} = {v} {when}, expected {exp}"
 
 
 async def setup(dut, cfg):
@@ -16,14 +26,20 @@ async def setup(dut, cfg):
     dut.rxd.value = 1
     apply(dut, cfg)
     dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 4)
-    dut.rst_n.value = 1
     await ClockCycles(dut.clk, 2)
+    await check_reset_outputs(dut, "during reset")
+    await ClockCycles(dut.clk, 2)
+    dut.rst_n.value = 1
+    await RisingEdge(dut.clk)
+    await check_reset_outputs(dut, "after reset")
+    await RisingEdge(dut.clk)
     tx_seen = []
     sink = UartSink(dut.txd, cfg, [tx_seen.append])
     mon = RxMonitor(dut, dut.clk)
+    mon.tx_timing = TxTiming(dut, cfg, dut._log)
     cocotb.start_soon(sink.run())
     cocotb.start_soon(mon.run())
+    cocotb.start_soon(mon.tx_timing.run())
     return UartSource(dut.rxd, cfg), tx_seen, mon
 
 
@@ -177,4 +193,34 @@ async def constrained_random(dut):
     pct, miss, nbins = cov.report()
     dut._log.info(f"{rnd + 1} configurations, {frames} frames, {errors} errors, coverage {pct:.1f}% of {nbins} bins")
     assert errors == 0
+    assert mon.tx_timing.violations == 0 and mon.tx_timing.frames > 0
     assert pct == 100.0, f"coverage holes: {miss}"
+
+
+@cocotb.test()
+async def rx_sample_point(dut):
+    """The receiver samples each bit at its centre, floor(div/2) clocks in (plus up to one clock of
+    synchroniser latency).
+    Every data and parity bit is only valid from 0.25 clock before to 1.25 clocks after its centre and
+    inverted elsewhere; frames start at ten different phases against the clock, the first one right
+    after reset."""
+    cfg = UartConfig()
+    src, _, mon = await setup(dut, cfg)
+    sent = []
+    for div in Coverage.DIVS:
+        centre = (div // 2) * CLK_PS - div * CLK_PS // 2       # -half a clock for an odd divisor
+        lo, hi = centre - CLK_PS // 4, centre + CLK_PS + CLK_PS // 4
+        for parity in PARITY:
+            cfg.div, cfg.parity = div, parity
+            apply(dut, cfg)
+            for k in range(10):
+                if sent:
+                    await RisingEdge(dut.clk)
+                    await Timer(CLK_PS * k // 10 + 1, unit="ps")
+                b = random.getrandbits(8)
+                sent.append(b)
+                await src.send_windowed(b, lo, hi)
+    await ClockCycles(dut.clk, 4)
+    got = [(f.data, f.perr, f.ferr) for f in mon.frames]
+    bad = [(i, b, g) for i, (b, g) in enumerate(zip(sent, got)) if g != (b, False, False)]
+    assert len(got) == len(sent) and not bad, f"{len(got)}/{len(sent)} frames, wrong: {bad[:6]}"
