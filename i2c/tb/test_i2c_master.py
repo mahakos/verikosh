@@ -1,6 +1,7 @@
 import os
 import random
 import cocotb
+import cocotb.utils
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, FallingEdge, ClockCycles, ReadOnly, First
 from i2c_vip import I2cTiming, I2cTarget, I2cMonitor, Coverage
@@ -10,12 +11,24 @@ START, WRITE, READ, STOP = range(4)
 ADDR = 0x50
 
 
+RESET_OUTPUTS = dict(m_scl_oe=0, m_sda_oe=0, scl=1, sda=1, cmd_ready=1, done=0, rd_data=0, nack=0,
+                     arb_lost=0, busy=0)
+
+
+async def check_reset_outputs(dut, when):
+    await ReadOnly()
+    for name, exp in RESET_OUTPUTS.items():
+        v = getattr(dut, name).value
+        assert v.is_resolvable and int(v) == exp, f"{name} = {v} {when}, expected {exp}"
+
+
 class Env:
     def __init__(self, dut, div, timing=None, hold_ps=0):
         self.dut, self.div = dut, div
         self.target = I2cTarget(dut, ADDR, hold_ps=hold_ps)
         self.mon = I2cMonitor(dut, timing or I2cTiming.scaled(div, CLK_PS), dut._log)
         self.mirror = [0] * 256       # scoreboard reference: what the target memory must hold
+        self.owned = False            # the controller should be holding the bus (busy)
 
     async def start(self):
         d = self.dut
@@ -26,10 +39,16 @@ class Env:
         d.cmd_data.value = 0
         d.cmd_ack.value = 0
         d.rogue_sda_oe.value = 0
+        d.tgt_scl_oe.value = 0
+        d.tgt_sda_oe.value = 0
         d.rst_n.value = 0
-        await ClockCycles(d.clk, 3)
-        d.rst_n.value = 1
         await ClockCycles(d.clk, 2)
+        await check_reset_outputs(d, "during reset")
+        await RisingEdge(d.clk)
+        d.rst_n.value = 1
+        await RisingEdge(d.clk)
+        await check_reset_outputs(d, "after reset")
+        await RisingEdge(d.clk)
         cocotb.start_soon(self.target.run())
         cocotb.start_soon(self.mon.run())
         return self
@@ -58,6 +77,10 @@ class Env:
             await ReadOnly()
             if d.done.value:
                 r = int(d.rd_data.value), bool(d.nack.value), bool(d.arb_lost.value)
+                had_bus = self.owned
+                self.owned = (had_bus or op == START) and op != STOP and not r[2]
+                assert int(d.busy.value) == self.owned, \
+                    f"busy={d.busy.value} after command {op}, expected {int(self.owned)}"
                 await RisingEdge(d.clk)
                 return r
             await RisingEdge(d.clk)
@@ -123,9 +146,38 @@ async def reset_idle(dut):
     assert dut.scl.value == 1 and dut.sda.value == 1
     assert dut.cmd_ready.value == 1 and dut.busy.value == 0
     await RisingEdge(dut.clk)
-    await env.cmd(WRITE, 0x12)           # no bus: dropped
-    await ClockCycles(dut.clk, 50)
-    assert env.mon.tokens == [] and env.mon.violations == 0
+    for op in (WRITE, READ, STOP):           # no bus: dropped at once, nothing on the wires
+        t0 = cocotb.utils.get_sim_time("ps")
+        await env.cmd(op, 0x12)
+        assert cocotb.utils.get_sim_time("ps") - t0 <= 3 * CLK_PS, f"dropped command {op} took too long"
+    await ClockCycles(dut.clk, 4 * 9 * env.div + 50)
+    assert env.mon.edges == 0 and env.mon.violations == 0, f"{env.mon.edges} line changes on an idle bus"
+
+
+@cocotb.test()
+async def start_latency(dut):
+    """A START on a free bus is cycle-exact: SDA falls 2*div+1 clocks after the command is accepted
+    (tSU;STA = 2 quarters, counted from the command), also for a START issued right after reset."""
+    env = await Env(dut, div=3).start()
+    for div in Coverage.DIVS:
+        env.set_div(div)
+
+        async def latency():
+            await RisingEdge(dut.cmd_valid)
+            n = 0
+            while dut.sda.value:
+                await RisingEdge(dut.clk)
+                n += 1
+            return n
+
+        t = cocotb.start_soon(latency())
+        await env.cmd(START)
+        n = await t
+        assert n == 2 * div + 2, f"div={div}: SDA fell {n - 1} clocks after the START was accepted, expected {2 * div + 1}"
+        await env.cmd(WRITE, ADDR << 1)
+        await env.cmd(STOP)
+        await ClockCycles(dut.clk, 4 * div)
+    assert env.mon.violations == 0
 
 
 @cocotb.test()

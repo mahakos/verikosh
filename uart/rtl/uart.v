@@ -73,14 +73,11 @@ module uart #(
   reg [7:0]    rsh;
   reg          rpar;
 
+  // The synchroniser has no reset: it keeps sampling rxd during reset, so it holds the real line
+  // level when reset is released (reset must be held for at least 2 clocks).
   always @(posedge clk) begin
-    if (!rst_n) begin
-      rx_m <= 1'b1;
-      rx_s <= 1'b1;
-    end else begin
-      rx_m <= rxd;
-      rx_s <= rx_m;
-    end
+    rx_m <= rxd;
+    rx_s <= rx_m;
   end
 
   always @(posedge clk) begin

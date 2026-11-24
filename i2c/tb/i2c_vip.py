@@ -5,8 +5,8 @@
                 written from the I2C bus rules, not from the RTL. Injects clock stretching,
                 data NACKs and a configurable SDA hold time.
   I2cMonitor    passive: decodes START / repeated START / STOP / bytes + ACK from the wires alone,
-                and checks tLOW, tHIGH, tSU;STA, tHD;STA, tSU;STO, tBUF, tSU;DAT and START/STOP
-                placement (never inside a byte)
+                and checks tLOW, tHIGH, tSU;STA, tHD;STA, tSU;STO, tBUF, tSU;DAT, START/STOP
+                placement (never inside a byte) and that SCL is never pulled low on a free bus
   Coverage      transaction kinds, burst lengths, address match, data NACK, stretching,
                 data classes, divider
 """
@@ -149,6 +149,7 @@ class I2cMonitor:
     def __init__(self, dut, timing, log):
         self.dut, self.t, self.log = dut, timing, log
         self.tokens = []
+        self.edges = 0               # every change on either line
         self.violations = 0
         self.allow_abort = False     # arbitration test: the winning master may stop anywhere
 
@@ -169,6 +170,7 @@ class I2cMonitor:
         while True:
             await First(d.scl.value_change, d.sda.value_change)
             now = get_sim_time("ps")
+            self.edges += 1
             t = self.t                       # limits can change between transactions (new divider)
             scl, sda = int(d.scl.value), int(d.sda.value)
             if scl and scl_p and sda != sda_p:
@@ -205,6 +207,8 @@ class I2cMonitor:
                     self.tokens.append(("B", sh, sda == 0))
                     bits, sh = 0, 0
             elif scl_p and not scl:
+                if not busy:
+                    self._fail("SCL pulled low while the bus is free (no START)")
                 if after_start:
                     self._min("tHD;STA", now - t_start, t.hd_sta)
                     after_start = False

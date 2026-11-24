@@ -9,8 +9,10 @@
 //      tLOW = tHIGH = 2*div, tSU;DAT = div, tSU;STA = tHD;STA = tSU;STO = 2*div, tBUF >= 3*div.
 //    With div = f_clk / 400 kHz every Standard-mode (100 kHz) limit of UM10204 is met.
 //  * Clock stretching: the SCL high phase only starts counting once SCL is really high.
-//  * Arbitration: if SDA reads low while this master releases it to send a 1, the master releases
-//    both lines immediately, goes idle and reports arb_lost.
+//  * Arbitration: if SDA reads low while this master releases it to send a 1, the master leaves
+//    both lines released, goes idle and reports arb_lost.
+//  * SCL is never pulled low while the bus is free; START is the first thing on the bus.
+//  * Reset: both lines released, busy, done, nack, arb_lost low, rd_data 0, cmd_ready high.
 module i2c_master (
   input  wire        clk,
   input  wire        rst_n,
@@ -49,14 +51,11 @@ module i2c_master (
   assign cmd_ready = (st != RUN);
   assign busy      = (st != IDLE);
 
+  // Synchronisers have no reset: they keep sampling the bus during reset, so they hold the real
+  // line levels when reset is released (reset must be held for at least 2 clocks).
   always @(posedge clk) begin
-    if (!rst_n) begin
-      scl_q <= 2'b11;
-      sda_q <= 2'b11;
-    end else begin
-      scl_q <= {scl_q[0], scl_i};
-      sda_q <= {sda_q[0], sda_i};
-    end
+    scl_q <= {scl_q[0], scl_i};
+    sda_q <= {sda_q[0], sda_i};
   end
 
   always @(posedge clk) begin
@@ -87,15 +86,12 @@ module i2c_master (
         end
       end
       default: case (q)                       // RUN
-        2'd0: begin                           // SCL low, SDA unchanged (hold)
-          scl_oe <= 1'b1;
-          if (cnt != 0) cnt <= cnt - 1'b1;
-          else begin
-            q      <= 2'd1;
-            cnt    <= one_q;
-            sda_oe <= is_bit ? !tx[8] : (op == C_STOP);
-          end
-        end
+        2'd0: if (cnt != 0) cnt <= cnt - 1'b1;  // SCL low (already pulled), SDA unchanged (hold)
+              else begin
+                q      <= 2'd1;
+                cnt    <= one_q;
+                sda_oe <= is_bit ? !tx[8] : (op == C_STOP);
+              end
         2'd1: if (cnt != 0) cnt <= cnt - 1'b1;  // SCL low, SDA set up
               else begin
                 q      <= 2'd2;
@@ -110,9 +106,9 @@ module i2c_master (
                   if (is_bit) begin
                     rx <= {rx[7:0], sda_s};
                     if (op == C_WRITE && nbit != 4'd8 && tx[8] && !sda_s) begin
-                      st       <= IDLE;       // someone else drove a 0: arbitration lost
-                      scl_oe   <= 1'b0;
-                      sda_oe   <= 1'b0;
+                      // someone else drove a 0: arbitration lost. Both lines are already
+                      // released here (SCL in its high phase, SDA released to send the 1).
+                      st       <= IDLE;
                       arb_lost <= 1'b1;
                       done     <= 1'b1;
                     end
@@ -125,7 +121,7 @@ module i2c_master (
             q      <= 2'd0;
             cnt    <= one_q;
             nbit   <= nbit + 1'b1;
-            tx     <= {tx[7:0], 1'b1};
+            tx     <= tx << 1;
             scl_oe <= 1'b1;
           end else begin
             done <= 1'b1;
