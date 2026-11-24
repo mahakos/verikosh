@@ -11,8 +11,11 @@ module axil_regfile #(
   input  wire          aclk,
   input  wire          aresetn,
   // write address
+  // AxPROT and the byte offset of the addresses are not used by this slave
+  /* verilator lint_off UNUSEDSIGNAL */
   input  wire [AW-1:0] awaddr,
   input  wire [2:0]    awprot,
+  /* verilator lint_on UNUSEDSIGNAL */
   input  wire          awvalid,
   output wire          awready,
   // write data
@@ -25,8 +28,10 @@ module axil_regfile #(
   output reg           bvalid,
   input  wire          bready,
   // read address
+  /* verilator lint_off UNUSEDSIGNAL */
   input  wire [AW-1:0] araddr,
   input  wire [2:0]    arprot,
+  /* verilator lint_on UNUSEDSIGNAL */
   input  wire          arvalid,
   output wire          arready,
   // read data
@@ -41,12 +46,9 @@ module axil_regfile #(
 
   reg [31:0] regs [0:NREGS-2];
 
-  // AxPROT and the byte offset are not used by this slave
-  wire unused_ok = &{1'b0, awprot, arprot, aw_q[1:0], araddr[1:0]};
-
   // ------------------------------------------------------------------ write path
   reg          aw_full, w_full;
-  reg [AW-1:0] aw_q;
+  reg [AW-1:2] aw_q;
   reg [31:0]   w_q;
   reg [3:0]    strb_q;
 
@@ -70,7 +72,7 @@ module axil_regfile #(
       bresp   <= OKAY;
       for (i = 0; i < NREGS - 1; i = i + 1) regs[i] <= 32'h0;
     end else begin
-      if (aw_hs) begin aw_full <= 1'b1; aw_q <= awaddr; end
+      if (aw_hs) begin aw_full <= 1'b1; aw_q <= awaddr[AW-1:2]; end
       if (w_hs)  begin w_full  <= 1'b1; w_q  <= wdata; strb_q <= wstrb; end
       if (b_hs)  bvalid <= 1'b0;
       if (commit) begin

@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        block: [apb, axi4lite, uart, spi]
+        block: [apb, axi4lite, uart, spi, i2c, async_fifo]
         seed: [1, 2, random]
     steps:
       - uses: actions/checkout@v4
@@ -27,15 +27,26 @@ jobs:
       - name: cocotb regression
         run: |
           if [ "${{ matrix.seed }}" != random ]; then export SEED=${{ matrix.seed }}; fi
-          make -C ${{ matrix.block }}/tb
+          set -o pipefail
+          make -C ${{ matrix.block }}/tb 2>&1 | tee sim.log
       - run: "! grep -q '<failure' ${{ matrix.block }}/tb/results.xml"
+      - name: coverage summary
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.block }}, seed ${{ matrix.seed }}"
+            grep -oE 'SEED=[0-9]+' sim.log | head -1 || true
+            echo
+            grep -E 'coverage [0-9.]+%' sim.log | sed -E 's/^ *[0-9.]+ns +INFO +[^ ]+ +/- /' || true
+            grep -E 'TESTS=' sim.log | sed -E 's/^ *\*\* */- /; s/ *\*\*$//' || true
+          } >> "$GITHUB_STEP_SUMMARY"
 
   formal:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        block: [fifo, axi4lite]
+        block: [fifo, axi4lite, async_fifo]
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y yosys z3

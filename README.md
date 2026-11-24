@@ -15,8 +15,11 @@ and a list of realistic injected bugs that the regression has to catch.
 | [**Sync FIFO**](fifo) | **formal only**: full proof by k-induction, incl. data integrity | BMC + k-induction + 3 covers | n/a | 5 / 5 |
 | [**UART**](uart) transceiver | cocotb VIP: parity, framing, BREAK, glitches, ±2% baud skew | 4 | 37 bins | 8 / 8 |
 | [**SPI**](spi) master | cocotb slave model + protocol checker, all 4 modes, MSB/LSB first | 3 | 33 bins incl. mode x bit order x divider | 7 / 7 |
+| [**I2C**](i2c) controller | cocotb target model + bus monitor checking UM10204 timing, clock stretching, **multi-master arbitration** | 6 | 29 bins incl. kind x burst length | 9 / 9 |
+| [**Dual-clock FIFO**](async_fifo) (CDC) | jitter clocks, flag-safety and Gray-code checkers **+ multi-clock formal proof** over every clock-edge ordering | 3 + BMC + k-induction + 3 covers | 17 bins incl. clock ratio x full/empty | 9 / 9 |
 
-**Mutation score: 36 / 36 (100%).** See [docs/MUTATION_REPORT.md](docs/MUTATION_REPORT.md).
+**Mutation score: 54 / 54 (100%).** See [docs/MUTATION_REPORT.md](docs/MUTATION_REPORT.md).
+How the flow works, step by step: [docs/METHODOLOGY.md](docs/METHODOLOGY.md).
 
 ## Why mutation testing
 
@@ -32,6 +35,15 @@ Things this found while building the repo:
   This is the practical argument for running formal next to simulation.
 * An SPI mutant that removed the CS-to-SCLK hold time survived the first version of the testbench. The protocol checker
   now measures setup and hold, and the mutant is caught.
+* The dual-clock FIFO's classic CDC mistakes (pointer crossing in binary, full test with only the MSB inverted,
+  a synchroniser fed from combinational logic) are each caught twice: by jittered-clock simulation and by a formal
+  proof that tries every ordering of the two clocks' edges.
+* A second round with hundreds of automatically generated one-line bugs per block (flipped comparisons, changed
+  constants, dropped updates, stuck conditions) found holes the hand-written list missed: output values during and
+  after reset were not checked, SPI and UART timing was only checked against minimums, APB outputs outside an access
+  were unchecked, and the AXI4-Lite tests never held READY low long enough to show a response waiting for it. The
+  checkers are now cycle-exact and those bugs are caught; the few that survive are equivalent (no observable
+  difference on the pins).
 * Two mutants turned out to be *equivalent* (no observable difference for any legal stimulus) and were replaced, which is
   itself a useful review of the design.
 
@@ -40,10 +52,10 @@ Things this found while building the repo:
 ```
 <block>/rtl/        design under test (Verilog-2005, lint-clean with verilator -Wall)
 <block>/tb/         cocotb VIP + tests + Makefile
-<block>/formal/     Yosys/SMT formal setup (fifo, axi4lite); properties live in the RTL under `ifdef FORMAL
+<block>/formal/     Yosys/SMT formal setup (fifo, axi4lite, async_fifo); properties live in the RTL under `ifdef FORMAL
 <block>/mutants.txt injected-bug list for tools/mutate.py
 tools/mutate.py     mutation-testing driver
-docs/               generated reports
+docs/               methodology and generated reports
 ```
 
 ## Run it
@@ -52,12 +64,13 @@ docs/               generated reports
 pip install "cocotb>=2.0,<3"
 sudo apt install iverilog yosys z3 verilator     # Ubuntu 24.04 packages
 
-make -C apb/tb              # any of apb, axi4lite, uart, spi.  SEED=1234 make ... reproduces a run
-make -C fifo/formal         # bmc + prove + cover   (also axi4lite/formal)
-python3 tools/mutate.py     # mutation score for every block, about 1.5 minutes
+make -C apb/tb              # any of apb, axi4lite, uart, spi, i2c, async_fifo.  SEED=1234 make ... reproduces a run
+make -C fifo/formal         # bmc + prove + cover   (also axi4lite/formal, async_fifo/formal)
+python3 tools/mutate.py     # mutation score for every block, about 4 minutes
 ```
 
-CI runs lint, every simulation with three seeds, both formal proofs and the full mutation run on every push.
+CI runs lint, every simulation with three seeds (coverage goes to the job summary), all three formal proofs and the
+full mutation run on every push.
 
 ## Need verification help?
 

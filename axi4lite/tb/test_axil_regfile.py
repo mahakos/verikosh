@@ -2,7 +2,7 @@ import os
 import random
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, ClockCycles
+from cocotb.triggers import RisingEdge, ClockCycles, ReadOnly
 from axil_vip import (AxilMaster, AxilReadyDriver, AxilMonitor, ProtocolChecker,
                       RegModel, Scoreboard, Coverage, OKAY, SLVERR)
 
@@ -35,14 +35,62 @@ async def finish(dut, sb, proto):
     assert sb.errors == 0, f"{sb.errors} scoreboard errors"
 
 
+RESET_OUTPUTS = dict(awready=1, wready=1, arready=1, bvalid=0, bresp=0, rvalid=0, rresp=0, rdata=0)
+
+
 @cocotb.test()
 async def reset_values(dut):
-    """Every RW register reads 0 after reset; the VERSION register reads its constant."""
+    """Out of reset every output has its documented value (no X), every RW register reads 0 and the
+    VERSION register reads its constant."""
     master, sb, _, proto = await setup(dut)
+    await ReadOnly()
+    for name, exp in RESET_OUTPUTS.items():
+        v = getattr(dut, name).value
+        assert v.is_resolvable and int(v) == exp, f"{name} = {v} after reset, expected {exp}"
+    await RisingEdge(dut.aclk)
     for i in range(NREGS - 1):
         data, resp = await master.read(i * 4)
         assert (data, resp) == (0, OKAY), f"reg{i} = 0x{data:08x} after reset"
     assert await master.read(RO_ADDR) == (VERSION, OKAY)
+    await finish(dut, sb, proto)
+
+
+@cocotb.test()
+async def valid_before_ready(dut):
+    """AXI dependency rule (AMBA AXI A3.3.1): the slave must not wait for BREADY before asserting BVALID,
+    nor for RREADY before asserting RVALID. Both READYs are held low; the responses must still appear,
+    stay up until accepted, and then complete normally."""
+    master, sb, _, proto = await setup(dut)
+    d = dut
+    d.bready.value = 0
+    d.rready.value = 0
+    await RisingEdge(d.aclk)
+    aw = cocotb.start_soon(master._channel(d.awvalid, d.awready, [(d.awaddr, 0x8)], 0))
+    w = cocotb.start_soon(master._channel(d.wvalid, d.wready, [(d.wdata, 0xA5A5_0003), (d.wstrb, 0xF)], 0))
+    await aw
+    await w
+    for name in ("bvalid", "rvalid"):
+        if name == "rvalid":
+            await master._channel(d.arvalid, d.arready, [(d.araddr, 0x8)], 0)
+        for _ in range(4):
+            await ReadOnly()
+            if getattr(d, name).value:
+                break
+            await RisingEdge(d.aclk)
+        else:
+            raise AssertionError(f"{name.upper()} waited for {name[0].upper()}READY")
+        await ClockCycles(d.aclk, 5)
+        await ReadOnly()
+        assert getattr(d, name).value == 1, f"{name.upper()} dropped before it was accepted"
+        await RisingEdge(d.aclk)
+    assert int(d.bresp.value) == OKAY
+    assert (int(d.rdata.value), int(d.rresp.value)) == (0xA5A5_0003, OKAY)
+    d.bready.value = 1
+    d.rready.value = 1
+    await ClockCycles(d.aclk, 2)
+    await ReadOnly()
+    assert d.bvalid.value == 0 and d.rvalid.value == 0
+    await RisingEdge(d.aclk)
     await finish(dut, sb, proto)
 
 
