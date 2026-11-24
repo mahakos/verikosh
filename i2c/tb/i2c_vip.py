@@ -161,7 +161,7 @@ class I2cMonitor:
             self._fail(f"{name} = {got / 1e3:.1f} ns < {limit / 1e3:.1f} ns")
 
     async def run(self):
-        d, t = self.dut, self.t
+        d = self.dut
         scl_p, sda_p = 1, 1
         busy, bits, sh = False, 0, 0
         t_rise = t_fall = t_sda = t_start = t_stop = None
@@ -169,6 +169,7 @@ class I2cMonitor:
         while True:
             await First(d.scl.value_change, d.sda.value_change)
             now = get_sim_time("ps")
+            t = self.t                       # limits can change between transactions (new divider)
             scl, sda = int(d.scl.value), int(d.sda.value)
             if scl and scl_p and sda != sda_p:
                 # the SCL rise just before a STOP or repeated START is not a data bit, hence bits > 1
