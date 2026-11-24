@@ -2,6 +2,8 @@
 //  * div       SCLK half-period in clk cycles (>= 1). SCLK = clk / (2*div).
 //  * Each frame: CS_N falls, div+1 cycles of setup, 16 SCLK edges, div cycles of hold,
 //    CS_N rises for at least div cycles before the next frame.
+//    Back to back (tx_valid held high), CS_N is high for exactly div+1 cycles between frames.
+//  * Reset: CS_N high, SCLK low, MOSI low, tx_ready high, rx_valid low.
 //  * Configuration inputs must be stable while a frame is in flight.
 module spi_master (
   input  wire       clk,
@@ -32,7 +34,7 @@ module spi_master (
   assign tx_ready = (st == IDLE);
 
   wire       out_bit  = lsb_first ? osh[0] : osh[7];
-  wire [7:0] osh_next = lsb_first ? {1'b0, osh[7:1]} : {osh[6:0], 1'b0};
+  wire [7:0] osh_next = lsb_first ? osh >> 1 : osh << 1;
   wire       leading  = !edge_n[0];             // edges 0,2,4.. move SCLK away from CPOL
   wire       sample   = leading ^ cpha;         // CPHA=0 samples on leading, CPHA=1 on trailing
 
@@ -53,7 +55,7 @@ module spi_master (
           st     <= SETUP;
           if (!cpha) begin                       // CPHA=0: first bit is valid before the first edge
             mosi <= lsb_first ? tx_data[0] : tx_data[7];
-            osh  <= lsb_first ? {1'b0, tx_data[7:1]} : {tx_data[6:0], 1'b0};
+            osh  <= lsb_first ? tx_data >> 1 : tx_data << 1;
           end else
             osh  <= tx_data;
         end

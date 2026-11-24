@@ -14,13 +14,25 @@ def apply(dut, cfg):
     dut.lsb_first.value, dut.div.value = cfg.lsb_first, cfg.div
 
 
+RESET_OUTPUTS = dict(cs_n=1, sclk=0, mosi=0, tx_ready=1, rx_valid=0)
+
+
+async def check_reset_outputs(dut, when):
+    await ReadOnly()
+    for name, exp in RESET_OUTPUTS.items():
+        v = getattr(dut, name).value
+        assert v.is_resolvable and int(v) == exp, f"{name} = {v} {when}, expected {exp}"
+
+
 async def setup(dut, cfg):
     cocotb.start_soon(Clock(dut.clk, CLK_PS, unit="ps").start())
     dut.tx_valid.value = 0
     dut.tx_data.value = 0
     apply(dut, cfg)
     dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 3)
+    await ClockCycles(dut.clk, 2)
+    await check_reset_outputs(dut, "during reset")
+    await RisingEdge(dut.clk)
     dut.rst_n.value = 1
     await ClockCycles(dut.clk, 2)
     slave = SpiSlave(dut, cfg)

@@ -67,6 +67,11 @@ class SpiSlave:
 
 
 class SpiChecker:
+    """Cycle-exact timing of the master, from the RTL header: CS_N setup to the first SCLK edge is
+    div+1 clocks, every SCLK half-period is div clocks, CS_N hold after the last edge is div clocks,
+    CS_N stays high at least div+1 clocks between frames (exactly div+1 back to back), each CS window
+    has exactly 16 SCLK edges, and SCLK sits at CPOL while CS_N is high."""
+
     def __init__(self, dut, cfg, clk_ps, log):
         self.dut, self.cfg, self.clk_ps, self.log = dut, cfg, clk_ps, log
         self.violations = 0
@@ -76,24 +81,39 @@ class SpiChecker:
         self.violations += 1
         self.log.error(f"SPI protocol violation: {msg}")
 
+    def _exact(self, what, got_ps, clocks):
+        if got_ps != clocks * self.clk_ps:
+            self._fail(f"{what} = {got_ps / self.clk_ps:g} clocks, expected {clocks}")
+
     async def run(self):
         d = self.dut
         cocotb.start_soon(self._idle_level())
+        t_rise = None
         while True:
             await FallingEdge(d.cs_n)
-            edges, last = 0, get_sim_time("ps")
+            start = get_sim_time("ps")
+            div = self.cfg.div
+            if t_rise is not None:
+                gap = start - t_rise
+                if gap < (div + 1) * self.clk_ps:
+                    self._fail(f"CS_N high for {gap / self.clk_ps:g} clocks between frames, minimum {div + 1}")
+                elif back_to_back and d.tx_valid.value:
+                    self._exact("CS_N high time between back-to-back frames", gap, div + 1)
+            edges, last = 0, start
             while True:
                 await First(Edge(d.sclk), RisingEdge(d.cs_n))
                 now = get_sim_time("ps")
                 if d.cs_n.value:
-                    if now - last < self.cfg.div * self.clk_ps:
-                        self._fail(f"CS_N hold after last edge {now - last} ps < {self.cfg.div} clocks")
+                    self._exact("CS_N hold after the last SCLK edge", now - last, div)
                     break
-                if now - last < self.cfg.div * self.clk_ps:
-                    what = "CS_N setup to first edge" if edges == 0 else "SCLK half-period"
-                    self._fail(f"{what} {now - last} ps < {self.cfg.div} clocks")
+                if edges == 0:
+                    self._exact("CS_N setup to the first SCLK edge", now - last, div + 1)
+                else:
+                    self._exact("SCLK half-period", now - last, div)
                 last = now
                 edges += 1
+            t_rise = get_sim_time("ps")
+            back_to_back = bool(d.tx_valid.value)
             self.frames += 1
             if edges != 16:
                 self._fail(f"{edges} SCLK edges in one CS window, expected 16")
