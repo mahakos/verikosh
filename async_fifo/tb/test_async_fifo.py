@@ -175,3 +175,42 @@ async def staggered_resets(dut):
         tw.cancel()
         tr.cancel()
         await Timer(20_000, unit="ps")
+
+
+@cocotb.test()
+async def write_while_reader_in_reset(dut):
+    """The writer may start while the read domain is still held in reset. It must still see
+    the FIFO as empty: exactly DEPTH pushes are accepted, then wfull rises and stays."""
+    depth = 1 << int(dut.AW.value)
+    rng = random.Random(int(os.environ.get("SEED", 1)))
+    wclk = JitterClock(dut.wclk, 10_000, rng=rng)
+    rclk = JitterClock(dut.rclk, 13_000, rng=rng)
+    dut.wrst_n.value = 0
+    dut.rrst_n.value = 0
+    dut.winc.value = 0
+    dut.rinc.value = 0
+    tw = cocotb.start_soon(wclk.run())
+    tr = cocotb.start_soon(rclk.run())
+    await ClockCycles(dut.wclk, 4)
+    await ClockCycles(dut.rclk, 4)
+    await Timer(1, unit="ps")
+    dut.wrst_n.value = 1                      # read side stays in reset for the whole test
+    await ClockCycles(dut.wclk, 2)
+    accepted = 0
+    for k in range(depth + 3):
+        await Timer(1, unit="ps")
+        dut.wdata.value = k & ((1 << len(dut.wdata)) - 1)
+        dut.winc.value = 1
+        await ReadOnly()
+        if not dut.wfull.value:               # this edge takes the word
+            accepted += 1
+        await RisingEdge(dut.wclk)
+    await ReadOnly()
+    assert accepted == depth, f"{accepted} pushes accepted with the reader in reset, expected {depth}"
+    assert dut.wfull.value == 1, "wfull low after DEPTH pushes"
+    await RisingEdge(dut.wclk)
+    await Timer(1, unit="ps")
+    dut.winc.value = 0
+    tw.cancel()
+    tr.cancel()
+    await Timer(20_000, unit="ps")

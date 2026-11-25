@@ -16,9 +16,9 @@ and a list of realistic injected bugs that the regression has to catch.
 | [**UART**](uart) transceiver | cocotb VIP: parity, framing, BREAK, glitches, ±2% baud skew | 4 | 37 bins | 8 / 8 |
 | [**SPI**](spi) master | cocotb slave model + protocol checker, all 4 modes, MSB/LSB first | 3 | 33 bins incl. mode x bit order x divider | 7 / 7 |
 | [**I2C**](i2c) controller | cocotb target model + bus monitor checking UM10204 timing, clock stretching, **multi-master arbitration** | 6 | 29 bins incl. kind x burst length | 9 / 9 |
-| [**Dual-clock FIFO**](async_fifo) (CDC) | jitter clocks, flag-safety and Gray-code checkers **+ multi-clock formal proof** over every clock-edge ordering | 4 + BMC + k-induction + 3 covers | 17 bins incl. clock ratio x full/empty | 10 / 10 |
+| [**Dual-clock FIFO**](async_fifo) (CDC) | jitter clocks, flag-safety and Gray-code checkers **+ multi-clock formal proof** over every clock-edge ordering | 5 + BMC + k-induction + 3 covers | 17 bins incl. clock ratio x full/empty | 11 / 11 |
 
-**Mutation score: 55 / 55 (100%).** See [docs/MUTATION_REPORT.md](docs/MUTATION_REPORT.md).
+**Mutation score: 56 / 56 (100%).** See [docs/MUTATION_REPORT.md](docs/MUTATION_REPORT.md).
 How the flow works, step by step: [docs/METHODOLOGY.md](docs/METHODOLOGY.md).
 
 ## Why mutation testing
@@ -44,12 +44,14 @@ Things this found while building the repo:
   were unchecked, and the AXI4-Lite tests never held READY low long enough to show a response waiting for it. The
   checkers are now cycle-exact and those bugs are caught; the few that survive are equivalent (no observable
   difference on the pins).
-* A third automatic round (25 Nov 2026, 522 generated bugs over the five simulated blocks, 98.9% caught) found
-  one more real hole: in the dual-clock FIFO the two resets were always released together, so a write pointer
+* A third automatic round (25 Nov 2026, 522 generated bugs over the five simulated blocks, 98.9% caught, 519 of 522
+  after the fixes below) found two more real holes: in the dual-clock FIFO the two resets were always released together, so a write pointer
   that resets to the wrong value was invisible to simulation (only the formal proof caught it). Real systems
   release the two resets at different times. A new test, `staggered_resets`, releases them in both orders and
   checks the flags every cycle; the bug is now a hand-written mutant (`wgray_reset`) and is caught by both.
-  The other bugs that survive change nothing visible on the pins (for example, counting the I2C bit counter
+  Its twin on the read side (`rgray_reset`) is worse: a writer that starts while the reader is still in reset
+  gets one push too many, an overflow. `write_while_reader_in_reset` now checks exactly DEPTH pushes are accepted.
+  The 3 bugs that still survive change nothing visible on the pins (for example, counting the I2C bit counter
   down from 0 instead of up reaches 8 after the same eight steps).
 * The same round also showed which tests carry the weight: in APB and SPI the constrained-random test
   alone catches every bug the whole suite catches, while the directed tests document the spec cases.
