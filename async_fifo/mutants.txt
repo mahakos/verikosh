@@ -8,3 +8,4 @@ pop_empty    | pop accepted while empty                                       | 
 comb_cdc     | synchroniser fed from combinational next-pointer logic          | wsync[0] <= rgray; | wsync[0] <= rgray_nxt;
 rd_addr      | memory read with the Gray pointer instead of the binary one     | assign rdata = mem[rbin[AW-1:0]]; | assign rdata = mem[rgray[AW-1:0]];
 empty_reset  | rempty low out of reset                                         | rempty <= 1'b1; | rempty <= 1'b0;
+wgray_reset  | write pointer resets to 1: the read side sees data while the write domain is still in reset | wgray <= 0; | wgray <= 1;

@@ -43,6 +43,7 @@ default 8-bit word and depth 8.
 | Feature | Simulation | Formal |
 |---|---|---|
 | Reset: empty, not full | `reset_flags` (also checked during reset) | reset-state invariants |
+| Resets released at different times (read first, then write first): flags stay empty / not full | `staggered_resets` | reset values of the pointers seen across the clock boundary |
 | Exactly DEPTH words accepted, extra pushes refused, order kept | `fill_and_drain` (fast and slow write clock) | overflow + data integrity |
 | No overflow / underflow for any clock relation | `FlagChecker` in `cdc_random` | assertions, proven by induction |
 | Flags release promptly | `FlagChecker` latency bound | n/a (liveness) |
@@ -51,10 +52,11 @@ default 8-bit word and depth 8.
 
 ## Bugs it catches
 
-9 injected CDC and flag bugs, every one caught by simulation and by formal independently: pointer crossing in binary, full
+10 injected CDC and flag bugs, every one caught by simulation and by formal independently: pointer crossing in binary, full
 test with only the MSB inverted (the binary rule applied to Gray code), full or empty flag one cycle late,
 push while full, pop while empty, a synchroniser fed from combinational logic, memory read with the Gray pointer,
-empty low out of reset.
+empty low out of reset, and a write pointer that resets to the wrong value (seen only when the two resets
+are released at different times).
 
 What neither method here can show: metastability itself, and whether the synthesised netlist keeps the
 synchroniser flops together. Those need a structural CDC check on the netlist and timing constraints
